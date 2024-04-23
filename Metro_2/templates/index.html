@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metro Monitoring System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Metro Monitoring System</h1>
+            <nav>
+                <ul>
+                    <li><a href="#">Home</a></li>
+                    <li><a href="#">About</a></li>
+                    <li><a href="#">Contact</a></li>
+                </ul>
+            </nav>
+        </header>
+        <main>
+            <section id="station-info">
+                <h2>Current Station</h2>
+                <p id="current-station">{{ current_station }}</p>
+                <h2>Next Station</h2>
+                <p id="next-station">{{ next_station }}</p>
+            </section>
+            <section id="sensor-data">
+                <h2>Sensor Data</h2>
+                <p>People Count: <span id="people-count">{{ people_count }}</span></p>
+                <h2>Fire Alert</h2>
+                <p id="fire-alert">{{ fire_alert_status }}</p>
+            </section>
+        </main>
+        <footer>
+            <p>&copy; 2024 Metro Monitoring System. All rights reserved.</p>
+        </footer>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
