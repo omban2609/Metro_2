@@ -1,6 +1,5 @@
 import RPi.GPIO as GPIO
 import time
-import Adafruit_DHT
 from flask import Flask, render_template, jsonify
 import threading
 
@@ -13,22 +12,23 @@ GPIO.setmode(GPIO.BCM)
 GPIO.setup(TRIG, GPIO.OUT)
 GPIO.setup(ECHO, GPIO.IN)
 
-# Temperature sensor setup (DHT11)
-DHT_SENSOR = Adafruit_DHT.DHT11
-DHT_PIN = 4  # GPIO pin connected to the DHT11 sensor
+# Flame sensor GPIO pin
+FLAME_SENSOR_PIN = 4  # GPIO pin connected to the flame sensor
 
-# Relay GPIO pins for controlling motors
-RELAY_PIN_MOTOR1 = 17  # GPIO pin for motor 1
-RELAY_PIN_MOTOR2 = 27  # GPIO pin for motor 2
-RELAY_PIN_MOTOR3 = 22  # GPIO pin for motor 3
-RELAY_PIN_MOTOR4 = 10  # GPIO pin for motor 4
+# L298N motor driver GPIO pins
+# Replace these with the actual GPIO pins connected to your L298N motor driver
+IN1 = 17  # Input 1 pin for motor A
+IN2 = 27  # Input 2 pin for motor A
+IN3 = 22  # Input 3 pin for motor B
+IN4 = 10  # Input 4 pin for motor B
+
+# Buzzer GPIO pin
+BUZZER_PIN = 25  # GPIO pin for the buzzer
 
 # Global variables
 people_count = 0
-temperature = 0
-humidity = 0
 current_station = 1  # Initialize current station to 1
-forward_direction = True  # True for forward, False for backward
+stations = {1: "Chattrapati Shivaji Terminal (CST)", 2: "Grand Central Terminal (GCT)", 3: "Dadar Railway Station (DRT)", 4: "Terminus"}
 
 # Function to measure distance using ultrasonic sensor
 def measure_distance():
@@ -48,78 +48,65 @@ def measure_distance():
     distance = (elapsed_time * 34300) / 2
     return distance
 
-# Function to count people entering the metro
-def count_people():
-    global people_count
+# Function to control motors for moving forward or backward
+def control_motors(direction):
+    if direction == 'forward':
+        GPIO.output(IN1, GPIO.HIGH)
+        GPIO.output(IN2, GPIO.LOW)
+        GPIO.output(IN3, GPIO.HIGH)
+        GPIO.output(IN4, GPIO.LOW)
+    elif direction == 'backward':
+        GPIO.output(IN1, GPIO.LOW)
+        GPIO.output(IN2, GPIO.HIGH)
+        GPIO.output(IN3, GPIO.LOW)
+        GPIO.output(IN4, GPIO.HIGH)
+
+# Function to stop motors
+def stop_motors():
+    GPIO.output(IN1, GPIO.LOW)
+    GPIO.output(IN2, GPIO.LOW)
+    GPIO.output(IN3, GPIO.LOW)
+    GPIO.output(IN4, GPIO.LOW)
+
+# Function to move the metro forward to the next station
+def move_forward():
+    global current_station
+    current_station = (current_station % len(stations)) + 1
+    control_motors('forward')
+    time.sleep(5)  # Adjust this value according to the time taken to reach the next station
+    stop_motors()
+
+# Function to move the metro backward to start again from the first station
+def move_backward():
+    global current_station
+    current_station = 1  # Reset to the first station
+    control_motors('backward')
+    time.sleep(20)  # Adjust this value according to the time taken to reverse to the first station
+    stop_motors()
+
+# Main loop for metro movement
+def metro_movement_loop():
     while True:
-        distance = measure_distance()
-        if distance < 100:  # Adjust this value according to your setup
-            people_count += 1
-            print("Person entered. Total people:", people_count)
-        time.sleep(1)
-
-# Function to read temperature and humidity from DHT sensor
-def read_sensor_data():
-    global temperature, humidity
-    while True:
-        humidity, temp = Adafruit_DHT.read_retry(DHT_SENSOR, DHT_PIN)
-        if humidity is not None and temp is not None:
-            temperature = temp
-            print("Temperature inside metro:", temperature)
-            print("Humidity inside metro:", humidity)
-        time.sleep(5)  # Adjust this value according to your requirements
-
-# Function to control motor 1
-def control_motor1(direction):
-    if direction == 'forward':
-        GPIO.output(RELAY_PIN_MOTOR1, GPIO.HIGH)  # Start motor 1 forward
-    elif direction == 'backward':
-        GPIO.output(RELAY_PIN_MOTOR1, GPIO.LOW)  # Start motor 1 backward
-
-# Function to control motor 2
-def control_motor2(direction):
-    if direction == 'forward':
-        GPIO.output(RELAY_PIN_MOTOR2, GPIO.HIGH)  # Start motor 2 forward
-    elif direction == 'backward':
-        GPIO.output(RELAY_PIN_MOTOR2, GPIO.LOW)  # Start motor 2 backward
-
-# Function to control motor 3
-def control_motor3(direction):
-    if direction == 'forward':
-        GPIO.output(RELAY_PIN_MOTOR3, GPIO.HIGH)  # Start motor 3 forward
-    elif direction == 'backward':
-        GPIO.output(RELAY_PIN_MOTOR3, GPIO.LOW)  # Start motor 3 backward
-
-# Function to control motor 4
-def control_motor4(direction):
-    if direction == 'forward':
-        GPIO.output(RELAY_PIN_MOTOR4, GPIO.HIGH)  # Start motor 4 forward
-    elif direction == 'backward':
-        GPIO.output(RELAY_PIN_MOTOR4, GPIO.LOW)  # Start motor 4 backward
+        move_forward()  # Move forward to the next station
+        if current_station == len(stations):  # If it reaches the last station, move backward
+            move_backward()
 
 # Web server route to serve the website
 @app.route('/')
 def index():
-    return render_template('index.html')
+    next_station = (current_station % len(stations)) + 1
+    return render_template('index.html', current_station=stations[current_station], next_station=stations[next_station])
 
 # Web server route to provide sensor data
 @app.route('/data')
 def data():
-    global people_count, temperature, humidity, current_station
-    return jsonify({'current_station': current_station, 'people_count': people_count, 'temperature': temperature, 'humidity': humidity})
+    global people_count, current_station
+    return jsonify({'current_station': stations[current_station], 'people_count': people_count})
 
 if __name__ == '__main__':
-    # Initialize relay pins
-    GPIO.setup(RELAY_PIN_MOTOR1, GPIO.OUT)
-    GPIO.setup(RELAY_PIN_MOTOR2, GPIO.OUT)
-    GPIO.setup(RELAY_PIN_MOTOR3, GPIO.OUT)
-    GPIO.setup(RELAY_PIN_MOTOR4, GPIO.OUT)
+    # Start the metro movement loop in a separate thread
+    movement_thread = threading.Thread(target=metro_movement_loop)
+    movement_thread.start()
 
-    # Start threads for counting people, reading sensor data
-    count_thread = threading.Thread(target=count_people)
-    sensor_thread = threading.Thread(target=read_sensor_data)
-    count_thread.start()
-    sensor_thread.start()
-
-    # Start Flask web server
+    # Start the Flask web server
     app.run(debug=True, host='0.0.0.0')
